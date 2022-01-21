@@ -27,7 +27,7 @@ _get_cluster_status(){
 setup(){
     mkdir /home/airflow/workspace
     cd /home/airflow/workspace
-    export PATH=$PATH:/usr/bin
+    export PATH=$PATH:/usr/bin:/usr/local/go/bin
     export HOME=/home/airflow
     export AWS_REGION=us-west-2
     export AWS_ACCESS_KEY_ID=$(cat ${json_file} | jq -r .aws_access_key_id)
@@ -35,6 +35,14 @@ setup(){
     export ROSA_ENVIRONMENT=$(cat ${json_file} | jq -r .rosa_environment)
     export ROSA_TOKEN=$(cat ${json_file} | jq -r .rosa_token_${ROSA_ENVIRONMENT})
     export CLUSTER_NAME=$(cat ${json_file} | jq -r .openshift_cluster_name)
+    export ROSA_CLI_VERSION=$(cat ${json_file} | jq -r .rosa_cli_version)
+    if [[ ${ROSA_CLI_VERSION} == "master" ]]; then
+        git clone https://github.com/openshift/rosa
+	pushd rosa
+	make
+	sudo mv rosa /usr/local/bin/
+	popd
+    fi
     rosa login --env=${ROSA_ENVIRONMENT}
     rosa whoami
     rosa verify quota
@@ -44,9 +52,10 @@ setup(){
 install(){
     export COMPUTE_WORKERS_NUMBER=$(cat ${json_file} | jq -r .openshift_worker_count)
     export COMPUTE_WORKERS_TYPE=$(cat ${json_file} | jq -r .openshift_worker_instance_type)
+    export NETWORK_TYPE=$(cat ${json_file} | jq -r .openshift_network_type)
     export ROSA_VERSION=$(rosa list versions -o json --channel-group=nightly | jq -r '.[] | select(.raw_id|startswith('\"${version}\"')) | .raw_id' | sort -rV | head -1)
     [ -z ${ROSA_VERSION} ] && echo "ERROR: Image not found for version (${version}) on ROSA Nightly channel group" && exit 1
-    rosa create cluster --cluster-name ${CLUSTER_NAME} --version "${ROSA_VERSION}-nightly" --channel-group=nightly --multi-az --compute-machine-type ${COMPUTE_WORKERS_TYPE} --compute-nodes ${COMPUTE_WORKERS_NUMBER} --watch
+    rosa create cluster --cluster-name ${CLUSTER_NAME} --version "${ROSA_VERSION}-nightly" --channel-group=nightly --multi-az --compute-machine-type ${COMPUTE_WORKERS_TYPE} --compute-nodes ${COMPUTE_WORKERS_NUMBER} --network-type ${NETWORK_TYPE} --watch
     postinstall
 }
 
